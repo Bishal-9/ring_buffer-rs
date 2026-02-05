@@ -147,7 +147,6 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
         let read_position = self.read_counter();
 
         let pointer_difference = read_position.wrapping_sub(local_read_counter);
-        println!("RP: {read_position}, LRP: {local_read_counter}, WP: {}", self.write_pointer.load(Ordering::Acquire));
         let mask = ((read_position > local_read_counter) as usize).wrapping_sub(1); // 0 if false, usize::MAX if true
 
         // returns diff if condition is true, 0 if false
@@ -234,10 +233,13 @@ impl<T: Copy + Default, const N: usize> SingleConsumer<T, N> {
         Self { buffer, pointer: 0 }
     }
     pub fn read(&mut self, value: &mut [T]) -> usize {
+        if self.buffer.write_counter() - self.pointer > self.buffer.capacity {
+            self.pointer = self.buffer.write_counter() - 1;
+        }
         self.buffer.read(&mut self.pointer, value)
     }
     pub fn position(&self) -> usize {
-        self.buffer.read_counter()
+        self.pointer
     }
     pub fn available(&self) -> usize {
         self.buffer.available_data(self.pointer)

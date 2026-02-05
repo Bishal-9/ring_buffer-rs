@@ -1,16 +1,15 @@
 #![allow(unused)]
 
-use std::fmt::Debug;
 use {
     crate::core::{RingBuffer, SingleConsumer, SingleProducer},
     std::sync::Arc,
 };
 
-pub struct SpscQueue<T: Copy + Default + Debug, const N: usize> {
+pub struct SpscQueue<T: Copy + Default, const N: usize> {
     producer: SingleProducer<T, N>,
     consumer: SingleConsumer<T, N>,
 }
-impl<T: Copy + Default + Debug, const N: usize> SpscQueue<T, N> {
+impl<T: Copy + Default, const N: usize> SpscQueue<T, N> {
     pub fn new() -> Self {
         let queue = Arc::new(RingBuffer::new());
         Self {

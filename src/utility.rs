@@ -3,13 +3,6 @@ use {
     std::sync::atomic::{AtomicUsize, Ordering},
 };
 
-// Macro to align structures to cache line boundaries
-macro_rules! cache_aligned {
-    ($expr:expr) => {
-        ((($expr) + CACHE_LINE_SIZE - 1) & !(CACHE_LINE_SIZE - 1))
-    };
-}
-
 #[repr(align(64))]
 pub(crate) struct PaddedAtomicUsize {
     value: AtomicUsize,

@@ -31,6 +31,11 @@ pub(crate) enum ProducerConsumerError {
 }
 impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
     pub fn new() -> Self {
+        assert!(
+            N.is_power_of_two(),
+            "RingBuffer capacity must be power-of-two"
+        );
+
         Self {
             data: UnsafeCell::new([T::default(); N]),
             capacity: N,
@@ -100,23 +105,17 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
     fn write(&self, value: &[T]) -> Option<usize> {
         let value_length = value.len();
         if value_length == 0 {
-            return Some(self.write_counter());
+            return Some(0);
         }
 
+        // Data is larger than the buffer size
         if value_length > self.capacity {
-            // Data is too large
             return None;
         }
 
         loop {
             let current_write_pointer = self.write_counter();
-            let available_space = self.available_space();
-
             let new_write_pointer = current_write_pointer + value_length;
-
-            if available_space < value_length {
-                return None;
-            }
 
             match self.write_pointer.compare_exchange_weak(
                 current_write_pointer,
@@ -132,10 +131,51 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
                     self.read_pointer
                         .store(new_write_pointer, Ordering::Release);
 
-                    return Some(new_write_pointer);
+                    return Some(value_length);
                 }
                 Err(_) => {
                     // Another thread updated the counter, retry
+                    continue;
+                }
+            }
+        }
+    }
+
+    fn multi_write(&self, value: &[T]) -> Option<usize> {
+        let value_length = value.len();
+        if value_length == 0 {
+            return Some(0);
+        }
+
+        // Data is larger than the buffer size
+        if value_length > self.capacity {
+            return None;
+        }
+
+        loop {
+            // Calculate the updated Write Pointer
+            let current_write_pointer = self.write_counter();
+            let new_write_pointer = current_write_pointer + value_length;
+
+            // Increase Write Counter by comparing atomically
+            match self.write_pointer.compare_exchange_weak(
+                self.read_counter(),
+                new_write_pointer,
+                Ordering::Release,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    // Write the data into the buffer
+                    self.write_to_ring(value, current_write_pointer);
+
+                    // Increase the Read Counter
+                    self.read_pointer
+                        .store(new_write_pointer, Ordering::Release);
+
+                    return Some(value_length);
+                }
+                Err(_) => {
+                    // Another thread updated the counter; retry
                     continue;
                 }
             }
@@ -178,13 +218,19 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
                 copy_nonoverlapping(
                     data.as_mut_ptr(),
                     value.as_mut_ptr().add(first_part_length),
-                    second_part_length
+                    second_part_length,
                 );
             }
         }
     }
 
     fn read(&self, local_read_counter: &mut usize, value: &mut [T]) -> usize {
+        // If the buffer is overwritten then the read_pointer should be
+        // 1 pointer before the current write pointer
+        if self.write_counter() - local_read_counter.clone() > self.capacity {
+            *local_read_counter = self.write_counter() - 1;
+        }
+
         // Calculator available data from our local position
         let available_from_local = self.available_data(*local_read_counter);
 
@@ -202,16 +248,51 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
 
         bytes_to_read
     }
+
+    fn multi_read(&self, local_read_counter: &PaddedAtomicUsize, value: &mut [T]) -> usize {
+        // If the buffer is overwritten then the read_pointer should be
+        // 1 pointer before the current write pointer
+        let write_counter = self.write_counter();
+        let read_counter = local_read_counter.load(Ordering::Acquire);
+        if write_counter - read_counter > self.capacity {
+            local_read_counter.store(write_counter - 1, Ordering::Release);
+        }
+
+        loop {
+            let _local_read_pointer = local_read_counter.load(Ordering::Acquire);
+
+            // Calculator available data from our local position
+            let available_from_local = self.available_data(_local_read_pointer);
+
+            if available_from_local == 0 {
+                return 0; // No new data available
+            }
+
+            match self.read_pointer.compare_exchange_weak(
+                _local_read_pointer,
+                available_from_local,
+                Ordering::Release,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    let bytes_to_read = available_from_local.min(value.len());
+                    self.read_from_ring(value, _local_read_pointer, bytes_to_read);
+                    local_read_counter.store(_local_read_pointer + bytes_to_read, Ordering::Release);
+                }
+                Err(_) => {
+                    continue;
+                }
+            }
+        }
+    }
 }
 
 pub struct SingleProducer<T: Copy + Default, const N: usize> {
-    buffer: Arc<RingBuffer<T, N>>,
-    pointer: usize,
-    overwritten: usize,
+    buffer: Arc<RingBuffer<T, N>>
 }
 impl<T: Copy + Default, const N: usize> SingleProducer<T, N> {
     pub fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
-        Self { buffer, pointer: 0, overwritten: 0 }
+        Self { buffer }
     }
     pub fn write(&mut self, value: &[T]) -> Option<usize> {
         self.buffer.write(value)
@@ -233,9 +314,6 @@ impl<T: Copy + Default, const N: usize> SingleConsumer<T, N> {
         Self { buffer, pointer: 0 }
     }
     pub fn read(&mut self, value: &mut [T]) -> usize {
-        if self.buffer.write_counter() - self.pointer > self.buffer.capacity {
-            self.pointer = self.buffer.write_counter() - 1;
-        }
         self.buffer.read(&mut self.pointer, value)
     }
     pub fn position(&self) -> usize {
@@ -243,5 +321,44 @@ impl<T: Copy + Default, const N: usize> SingleConsumer<T, N> {
     }
     pub fn available(&self) -> usize {
         self.buffer.available_data(self.pointer)
+    }
+}
+
+pub struct MultipleProducer<T: Copy + Default, const N: usize> {
+    buffer: Arc<RingBuffer<T, N>>,
+}
+impl<T: Copy + Default, const N: usize> MultipleProducer<T, N> {
+    pub fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
+        Self {
+            buffer,
+        }
+    }
+    pub fn write(&mut self, value: &[T]) -> Option<usize> {
+        self.buffer.multi_write(value)
+    }
+    pub fn position(&self) -> usize {
+        self.buffer.write_counter()
+    }
+    pub fn available_space(&self) -> usize {
+        self.buffer.available_space()
+    }
+}
+
+pub struct MultipleConsumer<T: Copy + Default, const N: usize> {
+    buffer: Arc<RingBuffer<T, N>>,
+    pointer: PaddedAtomicUsize,
+}
+impl<T: Copy + Default, const N: usize> MultipleConsumer<T, N> {
+    pub fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
+        Self { buffer, pointer: PaddedAtomicUsize::new() }
+    }
+    pub fn read(&mut self, value: &mut [T]) -> usize {
+        self.buffer.multi_read(&self.pointer, value)
+    }
+    pub fn position(&self) -> usize {
+        self.pointer.load(Ordering::Acquire)
+    }
+    pub fn available(&self) -> usize {
+        self.buffer.available_data(self.position())
     }
 }

@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use {
     crate::core::{RingBuffer, SingleConsumer, SingleProducer},
     std::sync::Arc,

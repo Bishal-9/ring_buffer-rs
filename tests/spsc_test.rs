@@ -1,5 +1,5 @@
-use std::thread;
 use ring_buffer::spsc::SpscQueue;
+use std::thread;
 
 #[test]
 fn test_spsc_basic_flow_u64() {
@@ -26,7 +26,7 @@ fn test_spsc_full_buffer() {
     assert_eq!(producer.write(&data), Some(4));
     
     // Attempt to write more when full
-    assert_eq!(producer.write(&[50]), Some(5));
+    assert_eq!(producer.write(&[50]), Some(1));
     assert_eq!(producer.available_space(), 4);
 
     // Read some data to make space
@@ -36,7 +36,7 @@ fn test_spsc_full_buffer() {
     
     // Now we should have space for 2 elements
     assert_eq!(producer.available_space(), 4);
-    assert_eq!(producer.write(&[50, 60]), Some(7));
+    assert_eq!(producer.write(&[50, 60]), Some(2));
 }
 
 #[test]
@@ -145,16 +145,16 @@ fn test_spsc_overwrite_unread_data() {
 
 #[test]
 fn test_spsc_multiple_overwrites_before_read() {
-    let queue: SpscQueue<u8, 3> = SpscQueue::new();
+    let queue: SpscQueue<u8, 4> = SpscQueue::new();
     let (mut producer, mut consumer) = queue.split();
 
-    producer.write(&[1, 2, 3]).unwrap();
-    producer.write(&[4]).unwrap();
+    producer.write(&[1, 2, 3, 4]).unwrap();
     producer.write(&[5]).unwrap();
+    producer.write(&[6]).unwrap();
 
-    let mut buf = [0u8; 3];
+    let mut buf = [0u8; 4];
     consumer.read(&mut buf);
-    assert_eq!(buf, [5, 0, 0]);
+    assert_eq!(buf, [6, 0, 0, 0]);
 }
 
 #[test]

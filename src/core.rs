@@ -118,7 +118,7 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
             let new_write_pointer = current_write_pointer + value_length;
 
             match self.write_pointer.compare_exchange_weak(
-                current_write_pointer,
+                self.read_counter(),
                 new_write_pointer,
                 Ordering::Release,
                 Ordering::Relaxed,
@@ -135,47 +135,6 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
                 }
                 Err(_) => {
                     // Another thread updated the counter, retry
-                    continue;
-                }
-            }
-        }
-    }
-
-    fn multi_write(&self, value: &[T]) -> Option<usize> {
-        let value_length = value.len();
-        if value_length == 0 {
-            return Some(0);
-        }
-
-        // Data is larger than the buffer size
-        if value_length > self.capacity {
-            return None;
-        }
-
-        loop {
-            // Calculate the updated Write Pointer
-            let current_write_pointer = self.write_counter();
-            let new_write_pointer = current_write_pointer + value_length;
-
-            // Increase Write Counter by comparing atomically
-            match self.write_pointer.compare_exchange_weak(
-                self.read_counter(),
-                new_write_pointer,
-                Ordering::Release,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => {
-                    // Write the data into the buffer
-                    self.write_to_ring(value, current_write_pointer);
-
-                    // Increase the Read Counter
-                    self.read_pointer
-                        .store(new_write_pointer, Ordering::Release);
-
-                    return Some(value_length);
-                }
-                Err(_) => {
-                    // Another thread updated the counter; retry
                     continue;
                 }
             }
@@ -244,28 +203,6 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
         self.read_from_ring(value, *local_read_counter, bytes_to_read);
 
         // Update local read counter
-        *local_read_counter += bytes_to_read;
-
-        bytes_to_read
-    }
-
-    fn multi_read(&self, local_read_counter: &mut usize, value: &mut [T]) -> usize {
-        // If the buffer is overwritten then the read_pointer should be
-        // 1 pointer before the current write pointer
-        let write_counter = self.write_counter();
-        if write_counter - *local_read_counter > self.capacity {
-            *local_read_counter = write_counter - 1;
-        }
-
-        // Calculator available data from our local position
-        let available_from_local = self.available_data(*local_read_counter);
-
-        if available_from_local == 0 {
-            return 0; // No new data available
-        }
-
-        let bytes_to_read = available_from_local.min(value.len());
-        self.read_from_ring(value, *local_read_counter, bytes_to_read);
         *local_read_counter += bytes_to_read;
 
         bytes_to_read

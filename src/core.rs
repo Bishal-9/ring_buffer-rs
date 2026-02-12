@@ -2,7 +2,6 @@
 
 use {
     crate::utility::PaddedAtomicUsize,
-    anyhow::Result,
     std::{
         cell::UnsafeCell,
         ptr::copy_nonoverlapping,
@@ -11,7 +10,6 @@ use {
             atomic::{AtomicUsize, Ordering},
         },
     },
-    thiserror::Error,
 };
 
 pub(crate) struct RingBuffer<T: Copy + Default, const N: usize> {
@@ -24,11 +22,6 @@ pub(crate) struct RingBuffer<T: Copy + Default, const N: usize> {
 unsafe impl<T: Copy + Default + Send, const N: usize> Send for RingBuffer<T, N> {}
 unsafe impl<T: Copy + Default + Send, const N: usize> Sync for RingBuffer<T, N> {}
 
-#[derive(Debug, Error)]
-pub(crate) enum ProducerConsumerError {
-    #[error("Buffer is empty. No data to write.")]
-    EmptyData,
-}
 impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
     pub fn new() -> Self {
         assert!(

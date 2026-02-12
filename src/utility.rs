@@ -1,7 +1,9 @@
 use {
     crate::CACHE_LINE_SIZE,
-    anyhow::Result,
-    std::sync::atomic::{AtomicUsize, Ordering},
+    std::{
+        fmt::{Debug, Result as FmtResult, Formatter},
+        sync::atomic::{AtomicUsize, Ordering}
+    },
 };
 
 // Macro to align structures to cache line boundaries
@@ -17,8 +19,8 @@ pub(crate) struct PaddedAtomicUsize {
     _padding: [u8; CACHE_LINE_SIZE - size_of::<AtomicUsize>()],
 }
 
-impl std::fmt::Debug for PaddedAtomicUsize {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for PaddedAtomicUsize {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("PaddedAtomicUsize")
             .field("value", &self.value.load(Ordering::Relaxed))
             .finish()

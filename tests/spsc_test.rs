@@ -24,7 +24,7 @@ fn test_spsc_full_buffer() {
     // Fill the buffer
     let data = [10, 20, 30, 40];
     assert_eq!(producer.write(&data), Some(4));
-    
+
     // Attempt to write more when full
     assert_eq!(producer.write(&[50]), Some(1));
     assert_eq!(producer.available_space(), 4);
@@ -33,7 +33,7 @@ fn test_spsc_full_buffer() {
     let mut read_buf = [0u8; 1];
     assert_eq!(consumer.read(&mut read_buf), 1);
     assert_eq!(read_buf, [50]);
-    
+
     // Now we should have space for 2 elements
     assert_eq!(producer.available_space(), 4);
     assert_eq!(producer.write(&[50, 60]), Some(2));
@@ -46,7 +46,7 @@ fn test_spsc_wrap_around() {
 
     // 1. Fill buffer
     producer.write(&[1, 2, 3]).unwrap();
-    
+
     // 2. Read all
     let mut read_buf = [0u32; 3];
     consumer.read(&mut read_buf);
@@ -348,11 +348,11 @@ fn test_spsc_multithread_wraparound() {
 
 #[test]
 fn test_spsc_multithread_wraparound_with_sync_safe() {
-    use std::thread;
     use std::sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     };
+    use std::thread;
 
     const ITERS: u32 = 1_000;
 
@@ -519,11 +519,11 @@ fn test_spsc_multithread_position_visibility() {
 //   - Explicit external synchronization to coordinate producer and consumer.
 #[test]
 fn test_spsc_multithread_capacity_one_invariant() {
-    use std::thread;
     use std::sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     };
+    use std::thread;
 
     let queue: SpscQueue<u8, 1> = SpscQueue::new();
     let (mut producer, mut consumer) = queue.split();
@@ -568,11 +568,11 @@ fn test_spsc_multithread_capacity_one_invariant() {
 
 #[test]
 fn test_spsc_capacity_one_deterministic_latest_value() {
-    use std::thread;
     use std::sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     };
+    use std::thread;
 
     let done = Arc::new(AtomicBool::new(false));
 

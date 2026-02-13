@@ -5,9 +5,9 @@
 //!
 //! ## Key Characteristics
 //! - **Full Parallelism**: Maximum concurrency on both ingress and egress sides.
-//! - **Safe Overwrites**: The library ensures that even under heavy congestion, 
+//! - **Safe Overwrites**: The library ensures that even under heavy congestion,
 //!   producers can overwrite old data without causing memory corruption.
-//! - **High Throughput**: Optimized for multi-core systems where data needs to 
+//! - **High Throughput**: Optimized for multi-core systems where data needs to
 //!   move between pools of threads.
 
 use ring_buffer::mpmc::MpmcQueue;
@@ -17,7 +17,7 @@ use std::time::Duration;
 fn main() {
     const CAPACITY: usize = 128;
     let queue: MpmcQueue<usize, CAPACITY> = MpmcQueue::new();
-    
+
     let (producer, consumer) = queue.split();
 
     // 1. Setup multi-producers
@@ -47,7 +47,10 @@ fn main() {
                 if c.read(&mut buf) > 0 {
                     read_count += 1;
                     if read_count % 10 == 0 {
-                        println!("[Consumer {}] Read {} items so far...", thread_id, read_count);
+                        println!(
+                            "[Consumer {}] Read {} items so far...",
+                            thread_id, read_count
+                        );
                     }
                 } else {
                     std::hint::spin_loop();
@@ -57,8 +60,12 @@ fn main() {
     }
 
     // Wait for everyone to finish
-    for h in p_handles { h.join().unwrap(); }
-    for h in c_handles { h.join().unwrap(); }
+    for h in p_handles {
+        h.join().unwrap();
+    }
+    for h in c_handles {
+        h.join().unwrap();
+    }
 
     println!("MPMC Example completed successfully.");
 }

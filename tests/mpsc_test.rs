@@ -1,6 +1,11 @@
-
 use ring_buffer::mpsc::MpscQueue;
-use std::{sync::{atomic::{AtomicU64, Ordering}, Arc, Barrier, Mutex}, thread};
+use std::{
+    sync::{
+        Arc, Barrier, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+    thread,
+};
 
 const N: usize = 8;
 

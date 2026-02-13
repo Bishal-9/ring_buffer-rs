@@ -179,7 +179,7 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
     fn read(&self, local_read_counter: &mut usize, value: &mut [T]) -> usize {
         // If the buffer is overwritten then the read_pointer should be
         // 1 pointer before the current write pointer
-        if self.write_counter() - local_read_counter.clone() > self.capacity {
+        if self.write_counter() - *local_read_counter > self.capacity {
             *local_read_counter = self.write_counter() - 1;
         }
 
@@ -206,7 +206,7 @@ pub struct SingleProducer<T: Copy + Default, const N: usize> {
     buffer: Arc<RingBuffer<T, N>>,
 }
 impl<T: Copy + Default, const N: usize> SingleProducer<T, N> {
-    pub fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
+    pub(crate) fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
         Self { buffer }
     }
     pub fn write(&mut self, value: &[T]) -> Option<usize> {
@@ -225,7 +225,7 @@ pub struct SingleConsumer<T: Copy + Default, const N: usize> {
     pointer: usize,
 }
 impl<T: Copy + Default, const N: usize> SingleConsumer<T, N> {
-    pub fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
+    pub(crate) fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
         Self { buffer, pointer: 0 }
     }
     pub fn read(&mut self, value: &mut [T]) -> usize {
@@ -244,7 +244,7 @@ pub struct MultipleProducer<T: Copy + Default, const N: usize> {
     buffer: Arc<RingBuffer<T, N>>,
 }
 impl<T: Copy + Default, const N: usize> MultipleProducer<T, N> {
-    pub fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
+    pub(crate) fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
         Self { buffer }
     }
     pub fn write(&mut self, value: &[T]) -> Option<usize> {
@@ -264,7 +264,7 @@ pub struct MultipleConsumer<T: Copy + Default, const N: usize> {
     pointer: usize,
 }
 impl<T: Copy + Default, const N: usize> MultipleConsumer<T, N> {
-    pub fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
+    pub(crate) fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
         Self { buffer, pointer: 0 }
     }
     pub fn read(&mut self, value: &mut [T]) -> usize {

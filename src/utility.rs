@@ -1,17 +1,10 @@
 use {
     crate::CACHE_LINE_SIZE,
     std::{
-        fmt::{Debug, Result as FmtResult, Formatter},
-        sync::atomic::{AtomicUsize, Ordering}
+        fmt::{Debug, Formatter, Result as FmtResult},
+        sync::atomic::{AtomicUsize, Ordering},
     },
 };
-
-// Macro to align structures to cache line boundaries
-macro_rules! cache_aligned {
-    ($expr:expr) => {
-        ((($expr) + CACHE_LINE_SIZE - 1) & !(CACHE_LINE_SIZE - 1))
-    };
-}
 
 #[repr(align(64))]
 pub(crate) struct PaddedAtomicUsize {
@@ -53,13 +46,11 @@ impl PaddedAtomicUsize {
         success_memory_ordering: Ordering,
         failure_memory_ordering: Ordering,
     ) -> Result<usize, usize> {
-        self.value
-            .compare_exchange_weak(
-                current,
-                new,
-                success_memory_ordering,
-                failure_memory_ordering,
-            )
-            .map_err(|e| e)
+        self.value.compare_exchange_weak(
+            current,
+            new,
+            success_memory_ordering,
+            failure_memory_ordering,
+        )
     }
 }

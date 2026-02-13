@@ -117,7 +117,6 @@ fn spmc_multiple_consumers_independent_positions() {
 
 #[test]
 fn spmc_concurrent_stress() {
-
     const N: usize = 1024;
     const COUNT: usize = 100_000;
 
@@ -217,7 +216,6 @@ fn consumer_falling_behind() {
     assert_eq!(out, [11, 0, 0, 0, 0, 0, 0, 0]);
 }
 
-
 #[test]
 fn zero_length_operations() {
     const N: usize = 8;
@@ -238,16 +236,16 @@ fn wraparound_read_write() {
     let queue: SpmcQueue<u64, N> = SpmcQueue::new();
     let (mut producer, mut consumer) = queue.split();
 
-    producer.write(&[1,2,3]);
+    producer.write(&[1, 2, 3]);
     let mut out = [0u64; 2];
     consumer.read(&mut out); // consume 2
 
-    producer.write(&[4,5]); // this wraps the buffer
+    producer.write(&[4, 5]); // this wraps the buffer
     let mut out2 = [0u64; 3];
     let read = consumer.read(&mut out2);
 
     assert_eq!(read, 3);
-    assert_eq!(out2, [3,4,5]);
+    assert_eq!(out2, [3, 4, 5]);
 }
 
 #[test]
@@ -259,7 +257,7 @@ fn multiple_consumers_independent_positions() {
     let mut consumer2 = consumer1.clone();
     let mut consumer1 = consumer1;
 
-    producer.write(&[1,2,3,4,5,6]);
+    producer.write(&[1, 2, 3, 4, 5, 6]);
 
     let mut out1 = [0u64; 3];
     let mut out2 = [0u64; 4];
@@ -268,14 +266,13 @@ fn multiple_consumers_independent_positions() {
     let r2 = consumer2.read(&mut out2); // second reads all 4
 
     assert_eq!(r1, 3);
-    assert_eq!(out1, [1,2,3]);
+    assert_eq!(out1, [1, 2, 3]);
     assert_eq!(r2, 4);
-    assert_eq!(out2, [1,2,3,4]); // consumer2 independent
+    assert_eq!(out2, [1, 2, 3, 4]); // consumer2 independent
 }
 
 #[test]
 fn fast_producer_slow_consumer() {
-
     const N: usize = 32;
     let queue: SpmcQueue<u64, N> = SpmcQueue::new();
     let (mut producer, consumer) = queue.split();
@@ -321,7 +318,6 @@ fn write_larger_than_capacity() {
 
 #[test]
 fn multi_consumer_stress() {
-
     const N: usize = 1024;
     const COUNT: usize = 10_000;
 

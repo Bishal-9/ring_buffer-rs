@@ -9,15 +9,15 @@
 //! - **Lock-Free Coordination**: Multiple producers use `compare_exchange` to safely reserve slots.
 
 use ring_buffer::mpsc::MpscQueue;
-use std::thread;
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 
 fn main() {
     // Capacity must be a power of two.
     const CAPACITY: usize = 32;
     let queue: MpscQueue<u32, CAPACITY> = MpscQueue::new();
-    
+
     // Split into a Multi-Producer handle and a Single-Consumer handle.
     let (producer, mut consumer) = queue.split();
 
@@ -26,7 +26,7 @@ fn main() {
     for thread_id in 0..3 {
         // MultiProducer handles are Cloneable.
         let mut p = producer.clone();
-        
+
         let handle = thread::spawn(move || {
             for i in 1..=5 {
                 let val = (thread_id * 100) + i;

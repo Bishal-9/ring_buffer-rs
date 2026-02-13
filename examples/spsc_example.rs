@@ -27,11 +27,11 @@ fn main() {
         println!("[Producer] Sequential write started...");
         for i in 1..=20 {
             let data = [i as u64];
-            
+
             // write() returns Some(count) on success, or None if the input exceeds capacity.
             // Note: In this implementation, if the buffer is full, it overwrites the oldest data.
             producer.write(&data);
-            
+
             println!("[Producer] Sent: {}", i);
             thread::sleep(Duration::from_millis(50));
         }
@@ -50,7 +50,11 @@ fn main() {
             let received = consumer.read(&mut output);
 
             if received > 0 {
-                println!("[Consumer] Received: {} (at position {})", output[0], consumer.position());
+                println!(
+                    "[Consumer] Received: {} (at position {})",
+                    output[0],
+                    consumer.position()
+                );
                 read_count += 1;
             } else {
                 // No data available yet, yield the CPU briefly.

@@ -1,11 +1,16 @@
 use {
-    crate::core::{RingBuffer, MultipleProducer, SingleConsumer},
+    crate::core::{MultipleProducer, RingBuffer, SingleConsumer},
     std::sync::Arc,
 };
 
 pub struct MpscQueue<T: Copy + Default, const N: usize> {
     producer: MultipleProducer<T, N>,
     consumer: SingleConsumer<T, N>,
+}
+impl<T: Copy + Default, const N: usize> Default for MpscQueue<T, N> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 impl<T: Copy + Default, const N: usize> MpscQueue<T, N> {
     pub fn new() -> Self {

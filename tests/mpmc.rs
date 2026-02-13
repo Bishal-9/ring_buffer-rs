@@ -1,7 +1,4 @@
-use {
-    ring_buffer::mpmc::MpmcQueue,
-    std::thread
-};
+use {ring_buffer::mpmc::MpmcQueue, std::thread};
 
 #[test]
 fn mpmc_basic_write_read() {
@@ -81,7 +78,6 @@ fn mpmc_multiple_consumers_independent_positions() {
 
 #[test]
 fn mpmc_concurrent_stress() {
-
     const N: usize = 1024;
     const COUNT: usize = 50_000;
 

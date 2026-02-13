@@ -15,7 +15,7 @@ use std::time::Duration;
 fn main() {
     const CAPACITY: usize = 64;
     let queue: SpmcQueue<i32, CAPACITY> = SpmcQueue::new();
-    
+
     let (mut producer, consumer) = queue.split();
 
     // Spawn 2 consumer threads.
@@ -23,7 +23,7 @@ fn main() {
     for consumer_id in 0..2 {
         // MultipleConsumer handles are Cloneable.
         let mut c = consumer.clone();
-        
+
         let handle = thread::spawn(move || {
             let mut buf = [0i32; 1];
             let mut count = 0;

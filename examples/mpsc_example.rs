@@ -9,7 +9,6 @@
 //! - **Lock-Free Coordination**: Multiple producers use `compare_exchange` to safely reserve slots.
 
 use ring_buffer::mpsc::MpscQueue;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 

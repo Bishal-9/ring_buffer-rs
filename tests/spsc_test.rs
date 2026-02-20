@@ -445,7 +445,6 @@ fn test_spsc_multithread_wraparound_time_bounded() {
 }
 
 #[test]
-#[test]
 fn test_spsc_multithread_position_visibility() {
     use std::thread;
 

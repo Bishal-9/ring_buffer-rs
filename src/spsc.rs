@@ -1,6 +1,5 @@
 use {
-    crate::core::{RingBuffer, SingleConsumer, SingleProducer},
-    std::sync::Arc,
+    crate::{core::{RingBuffer, SingleConsumer, SingleProducer}, sync::Arc},
 };
 
 pub struct SpscQueue<T: Copy + Default, const N: usize> {
@@ -14,7 +13,7 @@ impl<T: Copy + Default, const N: usize> Default for SpscQueue<T, N> {
 }
 impl<T: Copy + Default, const N: usize> SpscQueue<T, N> {
     pub fn new() -> Self {
-        let queue = Arc::new(RingBuffer::new());
+        let queue = Arc::new(RingBuffer::<T, N>::new());
         Self {
             producer: SingleProducer::new(queue.clone()),
             consumer: SingleConsumer::new(queue),

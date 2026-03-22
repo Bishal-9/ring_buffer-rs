@@ -354,7 +354,7 @@ fn test_spsc_multithread_wraparound_with_sync_safe() {
     };
     use std::thread;
 
-    const ITERS: u32 = 1_000;
+    const ITERS: u32 = 10_000;
 
     let done = Arc::new(AtomicBool::new(false));
     let queue: SpscQueue<u32, 4> = SpscQueue::new();
@@ -404,9 +404,6 @@ fn test_spsc_multithread_wraparound_with_sync_safe() {
 
     // Progress invariant: consumer saw at least one value
     assert!(last_read.is_some(), "Consumer did not read any value");
-
-    // Optional: print last value for debugging
-    println!("Last value read by consumer: {:?}", last_read.unwrap());
 }
 
 #[test]

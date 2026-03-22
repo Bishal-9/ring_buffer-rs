@@ -1,19 +1,12 @@
 #![allow(unused)]
 
 use {
-    crate::utility::PaddedAtomicUsize,
-    std::{
-        cell::UnsafeCell,
-        ptr::copy_nonoverlapping,
-        sync::{
-            Arc,
-            atomic::{AtomicUsize, Ordering},
-        },
-    },
+    crate::{sync, UnsafeCell, utility::PaddedAtomicUsize},
+    std::ptr::copy_nonoverlapping,
 };
 
 pub(crate) struct RingBuffer<T: Copy + Default, const N: usize> {
-    data: UnsafeCell<[T; N]>,
+    data: [UnsafeCell<T>; N],
     capacity: usize,
 
     write_pointer: PaddedAtomicUsize,
@@ -30,7 +23,7 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
         );
 
         Self {
-            data: UnsafeCell::new([T::default(); N]),
+            data: core::array::from_fn(|_| UnsafeCell::new(T::default())),
             capacity: N,
 
             write_pointer: PaddedAtomicUsize::new(),
@@ -40,12 +33,12 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
 
     #[inline(always)]
     fn read_counter(&self) -> usize {
-        self.read_pointer.load(Ordering::Acquire)
+        self.read_pointer.load(sync::atomic::Ordering::Acquire)
     }
 
     #[inline(always)]
     fn write_counter(&self) -> usize {
-        self.write_pointer.load(Ordering::Acquire)
+        self.write_pointer.load(sync::atomic::Ordering::Acquire)
     }
 
     #[inline]
@@ -63,35 +56,9 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
 
     fn write_to_ring(&self, value: &[T], start_position: usize) {
         let value_length = value.len();
-        let start_index = start_position & (self.capacity - 1);
-        let data = unsafe { &mut *self.data.get() };
-
-        if (start_index + value_length) <= self.capacity {
-            // Value fits without wrapping
-            unsafe {
-                copy_nonoverlapping(
-                    value.as_ptr(),
-                    data.as_mut_ptr().add(start_index),
-                    value_length,
-                )
-            }
-        } else {
-            // Value wraps around the ring buffer
-            let first_part_length = self.capacity - start_index;
-            let second_part_length = value_length - first_part_length;
-
-            unsafe {
-                copy_nonoverlapping(
-                    value.as_ptr(),
-                    data.as_mut_ptr().add(start_index),
-                    first_part_length,
-                );
-                copy_nonoverlapping(
-                    value.as_ptr().add(first_part_length),
-                    data.as_mut_ptr(),
-                    second_part_length,
-                );
-            }
+        for i in 0..value_length {
+            let index = (start_position + i) & (self.capacity - 1);
+            self.data[index].with_mut(|ptr| unsafe { *ptr = value[i] });
         }
     }
 
@@ -111,10 +78,10 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
             let new_write_pointer = current_write_pointer + value_length;
 
             match self.write_pointer.compare_exchange_weak(
-                self.read_counter(),
+                current_write_pointer,
                 new_write_pointer,
-                Ordering::Release,
-                Ordering::Relaxed,
+                sync::atomic::Ordering::Release,
+                sync::atomic::Ordering::Relaxed,
             ) {
                 Ok(_) => {
                     // Successfully reserved space, now write the data
@@ -122,12 +89,14 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
 
                     // Update the read counter to make data visible to consumers
                     self.read_pointer
-                        .store(new_write_pointer, Ordering::Release);
+                        .store(new_write_pointer, sync::atomic::Ordering::Release);
 
                     return Some(value_length);
                 }
                 Err(_) => {
                     // Another thread updated the counter, retry
+                    #[cfg(feature = "loom_test")]
+                    loom::thread::yield_now();
                     continue;
                 }
             }
@@ -146,41 +115,17 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
     }
 
     fn read_from_ring(&self, value: &mut [T], start_position: usize, bytes_to_read: usize) {
-        let start_index = start_position & (self.capacity - 1);
-        let data = unsafe { &mut *self.data.get() };
-
-        if (start_index + bytes_to_read) <= self.capacity {
-            unsafe {
-                copy_nonoverlapping(
-                    data.as_mut_ptr().add(start_index),
-                    value.as_mut_ptr(),
-                    bytes_to_read,
-                );
-            }
-        } else {
-            let first_part_length = self.capacity - start_index;
-            let second_part_length = bytes_to_read - first_part_length;
-
-            unsafe {
-                copy_nonoverlapping(
-                    data.as_mut_ptr().add(start_index),
-                    value.as_mut_ptr(),
-                    first_part_length,
-                );
-                copy_nonoverlapping(
-                    data.as_mut_ptr(),
-                    value.as_mut_ptr().add(first_part_length),
-                    second_part_length,
-                );
-            }
+        for i in 0..bytes_to_read {
+            let index = (start_position + i) & (self.capacity - 1);
+            self.data[index].with_mut(|ptr| unsafe { value[i] = *ptr });
         }
     }
 
     fn read(&self, local_read_counter: &mut usize, value: &mut [T]) -> usize {
         // If the buffer is overwritten then the read_pointer should be
         // 1 pointer before the current write pointer
-        if self.write_counter() - *local_read_counter > self.capacity {
-            *local_read_counter = self.write_counter() - 1;
+        if self.write_counter().wrapping_sub(*local_read_counter) > self.capacity {
+            *local_read_counter = self.write_counter().wrapping_sub(1);
         }
 
         // Calculator available data from our local position
@@ -196,17 +141,17 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
         self.read_from_ring(value, *local_read_counter, bytes_to_read);
 
         // Update local read counter
-        *local_read_counter += bytes_to_read;
+        *local_read_counter = local_read_counter.wrapping_add(bytes_to_read);
 
         bytes_to_read
     }
 }
 
 pub struct SingleProducer<T: Copy + Default, const N: usize> {
-    buffer: Arc<RingBuffer<T, N>>,
+    buffer: sync::Arc<RingBuffer<T, N>>,
 }
 impl<T: Copy + Default, const N: usize> SingleProducer<T, N> {
-    pub(crate) fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
+    pub(crate) fn new(buffer: sync::Arc<RingBuffer<T, N>>) -> Self {
         Self { buffer }
     }
     pub fn write(&mut self, value: &[T]) -> Option<usize> {
@@ -221,11 +166,11 @@ impl<T: Copy + Default, const N: usize> SingleProducer<T, N> {
 }
 
 pub struct SingleConsumer<T: Copy + Default, const N: usize> {
-    buffer: Arc<RingBuffer<T, N>>,
+    buffer: sync::Arc<RingBuffer<T, N>>,
     pointer: usize,
 }
 impl<T: Copy + Default, const N: usize> SingleConsumer<T, N> {
-    pub(crate) fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
+    pub(crate) fn new(buffer: sync::Arc<RingBuffer<T, N>>) -> Self {
         Self { buffer, pointer: 0 }
     }
     pub fn read(&mut self, value: &mut [T]) -> usize {
@@ -241,10 +186,10 @@ impl<T: Copy + Default, const N: usize> SingleConsumer<T, N> {
 
 #[derive(Clone)]
 pub struct MultipleProducer<T: Copy + Default, const N: usize> {
-    buffer: Arc<RingBuffer<T, N>>,
+    buffer: sync::Arc<RingBuffer<T, N>>,
 }
 impl<T: Copy + Default, const N: usize> MultipleProducer<T, N> {
-    pub(crate) fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
+    pub(crate) fn new(buffer: sync::Arc<RingBuffer<T, N>>) -> Self {
         Self { buffer }
     }
     pub fn write(&mut self, value: &[T]) -> Option<usize> {
@@ -260,11 +205,11 @@ impl<T: Copy + Default, const N: usize> MultipleProducer<T, N> {
 
 #[derive(Clone)]
 pub struct MultipleConsumer<T: Copy + Default, const N: usize> {
-    buffer: Arc<RingBuffer<T, N>>,
+    buffer: sync::Arc<RingBuffer<T, N>>,
     pointer: usize,
 }
 impl<T: Copy + Default, const N: usize> MultipleConsumer<T, N> {
-    pub(crate) fn new(buffer: Arc<RingBuffer<T, N>>) -> Self {
+    pub(crate) fn new(buffer: sync::Arc<RingBuffer<T, N>>) -> Self {
         Self { buffer, pointer: 0 }
     }
     pub fn read(&mut self, value: &mut [T]) -> usize {

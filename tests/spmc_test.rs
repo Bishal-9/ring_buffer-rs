@@ -360,3 +360,63 @@ fn multi_consumer_stress() {
         h.join().unwrap();
     }
 }
+
+#[test]
+fn test_spmc_multithread_wraparound_with_sync_safe() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    use std::thread;
+
+    const ITERS: u32 = 10_000;
+
+    let done = Arc::new(AtomicBool::new(false));
+    let queue: SpmcQueue<u32, 4> = SpmcQueue::new();
+    let (mut producer, mut consumer) = queue.split();
+
+    let done_p = done.clone();
+    let done_c = done.clone();
+
+    // Producer thread
+    let prod = thread::spawn(move || {
+        for i in 0..ITERS {
+            // Ignore failed writes if the queue is full (overwrite will happen)
+            let _ = producer.write(&[i]);
+        }
+        done_p.store(true, Ordering::Release);
+    });
+
+    // Consumer thread
+    let cons = thread::spawn(move || {
+        let mut buf = [0u32; 1];
+        let mut last_read = None;
+
+        loop {
+            // Read any available value
+            if consumer.read(&mut buf) == 1 {
+                let val = buf[0];
+
+                // Monotonicity invariant among surviving values
+                if let Some(prev) = last_read {
+                    assert!(val >= prev, "SPMC queue value decreased unexpectedly");
+                }
+
+                last_read = Some(val);
+            }
+
+            // Stop when producer is done
+            if done_c.load(Ordering::Acquire) {
+                break;
+            }
+        }
+
+        last_read
+    });
+
+    prod.join().unwrap();
+    let last_read = cons.join().unwrap();
+
+    // Progress invariant: consumer saw at least one value
+    assert!(last_read.is_some(), "Consumer did not read any value");
+}

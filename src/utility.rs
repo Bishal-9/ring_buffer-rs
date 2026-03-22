@@ -1,9 +1,6 @@
 use {
-    crate::CACHE_LINE_SIZE,
-    std::{
-        fmt::{Debug, Formatter, Result as FmtResult},
-        sync::atomic::{AtomicUsize, Ordering},
-    },
+    crate::{sync::atomic::{AtomicUsize, Ordering}, CACHE_LINE_SIZE},
+    std::fmt::{Debug, Formatter, Result as FmtResult},
 };
 
 #[repr(align(64))]
